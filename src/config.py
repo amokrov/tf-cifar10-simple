@@ -5,6 +5,6 @@ tf_config = {
     'task': {'type': 'worker', 'index': 0}
 }
 batch_size = 64
-epochs = 3
+epochs = 2
 steps_per_epoch = 782
 per_worker_batch_size = 64

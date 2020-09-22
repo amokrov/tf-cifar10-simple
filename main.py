@@ -1,5 +1,8 @@
+import json
 import os
 import sys
+
+from concurrent.futures import ProcessPoolExecutor
 
 import tensorflow as tf
 
@@ -13,20 +16,30 @@ def setup():
         sys.path.insert(0, '')
 
 
-def run():
+def cleanup():
+    os.environ.pop('TF_CONFIG', None)
+
+
+def run(worker_index=0):
+    config.tf_config['task']['index'] = worker_index
+    os.environ['TF_CONFIG'] = json.dumps(config.tf_config)
     num_workers = len(config.tf_config['cluster']['worker'])
     strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
     global_batch_size = config.per_worker_batch_size * num_workers
-
-    multi_worker_dataset = cifar10.cifar10_dataset(global_batch_size)
+    train_dataset, eval_dataset = cifar10.cifar10_dataset(global_batch_size)
 
     with strategy.scope():
-        # Model building/compiling need to be within `strategy.scope()`.
-        multi_worker_model = cifar10.build_and_compile_cnn_model()
+        model = cifar10.get_model()
 
-    multi_worker_model.fit(multi_worker_dataset, epochs=config.epochs, steps_per_epoch=config.steps_per_epoch)
+    model.fit(train_dataset,
+              epochs=config.epochs,
+              steps_per_epoch=config.steps_per_epoch,
+              validation_data=eval_dataset)
 
 
 if __name__ == '__main__':
     setup()
-    run()
+    num_workers = len(config.tf_config['cluster']['worker'])
+    with ProcessPoolExecutor(max_workers=num_workers) as executor:
+        executor.map(run, range(num_workers))
+    cleanup()
